@@ -1,42 +1,53 @@
 # FAST_LIO_PY
 
-**A single-file, pure-Python (NumPy) reimplementation of [FAST-LIO2](https://github.com/hku-mars/FAST_LIO), written for code review and teaching.**
+**A pure-Python (NumPy) reimplementation of [FAST-LIO2](https://github.com/hku-mars/FAST_LIO), written for code review and teaching.**
 
-The entire LiDAR-inertial odometry pipeline — manifold math, iterated error-state Kalman filter, IMU forward propagation and motion undistortion, incremental map, point-to-plane observation model, rosbag parsing, and the main loop — lives in one top-to-bottom-readable file: [`fastlio_numpy.py`](fastlio_numpy.py) (~2 700 lines). No compiled extensions, no JIT: the only algorithmic non-NumPy component is `scipy.spatial.cKDTree` for nearest-neighbor search.
+The complete LiDAR-inertial odometry pipeline in readable NumPy, split into two top-to-bottom-readable files:
+
+- **[`fastlio_numpy.py`](fastlio_numpy.py)** (~1 700 lines) — the **SLAM algorithm**: the iterated error-state Kalman filter (predict / update), IMU initialization + forward propagation + motion undistortion, the point-to-plane observation model, incremental-map update, and the offline main loop.
+- **[`fastlio_utils.py`](fastlio_utils.py)** (~1 100 lines) — the **data structures and infrastructure** the algorithm operates on: SO(3)/S(2) manifold math, the 23-DOF manifold state (`StateIkfom`), the scipy incremental-map KD-tree, raw-bytes rosbag parsing, the profiling timer, config/CLI, geometry helpers, and file output.
+
+The split follows a simple principle — *`utils` holds the objects; `numpy` holds the algorithm that acts on them.* No compiled extensions, no JIT: the only algorithmic non-NumPy component is `scipy.spatial.cKDTree` for nearest-neighbor search. Section banners and walkthrough commentary are in academic Chinese; inline code comments are English, verbatim from the development codebase.
 
 ## File organization (mirrors the C++ architecture)
 
-| Section | Content | C++ counterpart |
+| Where | Content | C++ counterpart |
 |---|---|---|
-| §1 | SO(3) / S(2) manifold math | `common_lib.h` / IKFoM (MTK) toolkit |
-| §2 | 23-DOF manifold state, ⊞ / ⊟ | `include/use-ikfom.hpp` |
-| §3 | Iterated error-state KF (IESKF) | `include/IKFoM_toolkit/esekfom/esekfom.hpp` |
-| §4 | IMU init, forward propagation, undistortion | `include/IMU_Processing.hpp` |
-| §5 | Incremental map KD-tree (scipy, lazy rebuild) | `include/ikd-Tree/` |
-| §6 | Point-to-plane residuals & 12-D Jacobian | `h_share_model` in `src/laserMapping.cpp` |
-| §7 | Raw-bytes rosbag message parsing | `src/preprocess.cpp` + rosbag I/O |
-| §8 | Offline main loop, CLI, TUM/PCD output | `src/laserMappingOffline.cpp` |
+| `utils` §A | SO(3) / S(2) manifold math | `common_lib.h` / IKFoM (MTK) toolkit |
+| `utils` §B | 23-DOF manifold state, ⊞ / ⊟ | `include/use-ikfom.hpp` |
+| `numpy` §3 | Iterated error-state KF (IESKF) | `include/IKFoM_toolkit/esekfom/esekfom.hpp` |
+| `numpy` §4 | IMU init, forward propagation, undistortion | `include/IMU_Processing.hpp` |
+| `utils` | Incremental map KD-tree (scipy, lazy rebuild) | `include/ikd-Tree/` |
+| `numpy` §6 | Point-to-plane residuals & 12-D Jacobian | `h_share_model` in `src/laserMapping.cpp` |
+| `utils` §rosbag | Raw-bytes rosbag message parsing | `src/preprocess.cpp` + rosbag I/O |
+| `numpy` §8 | Offline main loop, CLI, TUM/PCD output | `src/laserMappingOffline.cpp` |
 
-Section banners and walkthrough commentary are written in (academic) Chinese; inline code comments are kept in English, verbatim from the development codebase.
+## Accuracy & timing vs the original C++ FAST-LIO2
+
+Same-machine comparison on 6 Livox AVIA bags (ATE = translational RMSE, SE(3)-aligned; wall = internal SLAM loop):
+
+| Bag (duration) | rate | ATE vs C++ | C++ | NumPy | **real-time** |
+|---|---|---|---|---|---|
+| quick-shack (49 s) | 10 Hz | 5.87 cm | 1.6 s | 9.7 s | **5.0×** |
+| outdoor_MB_10hz (141 s) | 10 Hz | 3.87 cm | 12.3 s | 43.5 s | **3.2×** |
+| HKU_MB (260 s) | 10 Hz | 5.17 cm | 23.9 s | 88.7 s | **2.9×** |
+| outdoor_run_100Hz (64 s) | 100 Hz | 4.30 cm | 7.2 s | 47.2 s | 1.4× |
+| outdoor_MB_100Hz (117 s) | 100 Hz | 9.41 cm | 11.6 s | 81.0 s | 1.4× |
+| 100hz_2021 (351 s) | 100 Hz | 26.82 cm | 42.1 s | 285.3 s | 1.2× |
+
+**Real-time:** even in this most-conservative configuration (single-threaded BLAS, no JIT), the pure-NumPy pipeline runs **faster than real time on every bag**. At 10 Hz it has 3–5× headroom (~20–34 ms/scan vs the 100 ms budget); at 100 Hz it is still real-time but tight (~7–8 ms/scan vs 10 ms). (These are offline timings; a live ROS node adds per-message deserialization overhead, small relative to the SLAM compute.)
+
+**Timing:** aggregate ≈ 5–6× the C++ wall. Single-threaded BLAS is forced on purpose — thread-pool spin-up dominates compute on this filter's small 23×23 / 12×12 / 3×3 matrices; serial BLAS measured **−60 % wall** vs default threading. The remaining gap is the per-scan Python-dispatch floor over the sequential, small-matrix filter, not algorithmic overhead.
+
+**Accuracy:** four of six bags are within a few cm of C++. The two outliers sit in numerically chaotic regimes — `outdoor_MB_100Hz` is a global gravity-init tilt (trajectory *shape* is fine), `100hz_2021` is long-run drift — where any floating-point implementation change moves the trajectory; the C++/Python gap there is FP-accumulation noise, not an algorithmic difference.
 
 ## Correctness
 
 The extraction was verified against the multi-module development codebase at three levels:
 
-1. **Unit equivalence** — 5 122 comparisons across all math/filter/map/parsing functions, bit-identical (`np.array_equal`, max |diff| = 0.0).
-2. **Full-pipeline** — on 6 Livox AVIA benchmark bags, the output trajectory is **byte-identical** to the multi-module numpy path.
-3. Accuracy vs. the original C++ FAST-LIO2 (ATE trans. RMSE, SE(3)-aligned, same bags):
-
-| Bag (duration) | ATE vs C++ | Wall time |
-|---|---|---|
-| quick-shack (49 s) | 5.87 cm | 9.9 s |
-| outdoor_run_100Hz (64 s) | 4.30 cm | 48.6 s |
-| outdoor_MB_10hz (141 s) | 3.87 cm | 45.6 s |
-| outdoor_MB_100Hz (117 s) | 9.41 cm | 84.9 s |
-| HKU_MB (260 s) | 5.17 cm | 90.0 s |
-| 100hz_2021 (351 s) | 26.82 cm | 295.4 s |
-
-Aggregate wall time is ≈ 4.8× the C++ original (574 s vs 119 s) — single-threaded BLAS is forced on purpose (thread-pool spin-up dominates compute on the small 23×23 / 12×12 / 3×3 matrices of this filter; serial BLAS measured **−60 % wall** vs default threading). The two bags above the 6.4 cm threshold sit in numerically chaotic regimes where any floating-point implementation change moves the trajectory (the C++/Python gap there is FP-accumulation noise, not an algorithmic difference).
+1. **Unit equivalence** — 5 122 comparisons across all math / filter / map / parsing functions, bit-identical (`np.array_equal`, max |diff| = 0.0).
+2. **Full-pipeline** — on the 6 benchmark bags, the output trajectory is **byte-identical** to the multi-module NumPy path.
+3. **Accuracy vs C++** — the table above.
 
 ## Usage
 
@@ -47,13 +58,13 @@ python3 fastlio_numpy.py \
     --output_dir ./out [--profile]
 ```
 
-Outputs: `out/Log/trajectory_py_tum.txt` (TUM format) and `out/PCD/map_offline_py.pcd` (needs `open3d`).
+Keep `fastlio_utils.py` next to `fastlio_numpy.py` (the algorithm file imports it). Outputs: `out/Log/trajectory_py_tum.txt` (TUM format) and `out/PCD/map_offline_py.pcd`.
 
-**Dependencies**: `numpy`, `scipy`, `pyyaml`, and ROS1 `rosbag` (file I/O only; e.g. ROS Noetic, Python ≥ 3.7). Optional: `open3d` for PCD export. Supported input: Livox `CustomMsg` bags (fast raw-bytes path) and `PointCloud2` bags (rospy fallback).
+**Dependencies**: `numpy`, `scipy`, `pyyaml`, and ROS1 `rosbag` (file I/O only; e.g. ROS Noetic, Python ≥ 3.7). Optional: `open3d` for PCD export (a hand-written binary-PCD writer is used as fallback). Supported input: Livox `CustomMsg` bags (fast raw-bytes path) and `PointCloud2` bags (rospy fallback).
 
 ## 中文简介
 
-本仓库将 FAST-LIO2 的完整 SLAM 管线以纯 Python (NumPy) 重写并收录于单一文件，章节组织与 C++ 版模块边界一一对应，节头附学术中文讲解，面向代码审读与教学。实现与多模块开发版在 6 个数据包上输出轨迹逐字节一致；相对 C++ 原版的轨迹精度与耗时见上表。
+本仓库将 FAST-LIO2 的完整 SLAM 管线以纯 Python (NumPy) 重写，面向代码审读与教学，拆为两个自顶向下可读的文件：`fastlio_numpy.py`（SLAM 算法本体：IESKF、IMU 处理、点面观测、主循环）与 `fastlio_utils.py`（其操作的数据结构与基础设施：SO(3)/S(2) 数学、流形状态、增量地图 KD-Tree、rosbag 解析、计时、配置、IO）。章节组织与 C++ 版模块边界对应，节头附学术中文讲解。实现与多模块开发版在 6 个数据包上输出轨迹逐字节一致；纯 NumPy 在 10 Hz 下有 3–5× 实时余量。精度与耗时见上表。
 
 ## Acknowledgements & License
 
