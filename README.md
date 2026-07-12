@@ -5,7 +5,7 @@
 The complete LiDAR-inertial odometry pipeline in readable NumPy, split into two top-to-bottom-readable files:
 
 - **[`fastlio_numpy.py`](fastlio_numpy.py)** (~1 700 lines) — the **SLAM algorithm**: the iterated error-state Kalman filter (predict / update), IMU initialization + forward propagation + motion undistortion, the point-to-plane observation model, incremental-map update, and the offline main loop.
-- **[`fastlio_utils.py`](fastlio_utils.py)** (~1 100 lines) — the **data structures and infrastructure** the algorithm operates on: SO(3)/S(2) manifold math, the 23-DOF manifold state (`StateIkfom`), the scipy incremental-map KD-tree, raw-bytes rosbag parsing, the profiling timer, config/CLI, geometry helpers, and file output.
+- **[`fastlio_utils.py`](fastlio_utils.py)** (~1 200 lines) — the **data structures and infrastructure** the algorithm operates on: SO(3)/S(2) manifold math, the 23-DOF manifold state (`StateIkfom`), the scipy incremental-map KD-tree, raw-bytes rosbag parsing, the profiling timer, config/CLI, geometry helpers, file output, and the per-frame-map aggregation + open3d visualization (`aggregate_map`, also a standalone CLI).
 
 The split follows a simple principle — *`utils` holds the objects; `numpy` holds the algorithm that acts on them.* No compiled extensions, no JIT: the only algorithmic non-NumPy component is `scipy.spatial.cKDTree` for nearest-neighbor search. Section banners and walkthrough commentary are in academic Chinese; inline code comments are English, verbatim from the development codebase.
 
@@ -51,6 +51,8 @@ The extraction was verified against the multi-module development codebase at thr
 
 ## Usage
 
+**Run** the odometry on a bag (keep `fastlio_utils.py` next to `fastlio_numpy.py` — the algorithm file imports it):
+
 ```bash
 python3 fastlio_numpy.py \
     --bag your_livox_avia.bag \
@@ -58,13 +60,21 @@ python3 fastlio_numpy.py \
     --output_dir ./out [--profile]
 ```
 
-Keep `fastlio_utils.py` next to `fastlio_numpy.py` (the algorithm file imports it). Outputs: `out/Log/trajectory_py_tum.txt` (TUM format) and `out/PCD/map_offline_py.pcd`.
+This writes `out/Log/trajectory_py_tum.txt` (TUM trajectory) and streams the map as **per-frame output** under `out/frames/` — each scan's undistorted (LiDAR-body) cloud is appended to `clouds.bin` and its estimated pose + online-estimated extrinsics recorded in `index.npz`. The run stays memory-light (no whole-map accumulation in RAM) and never writes a giant PCD.
 
-**Dependencies**: `numpy`, `scipy`, `pyyaml`, and ROS1 `rosbag` (file I/O only; e.g. ROS Noetic, Python ≥ 3.7). Optional: `open3d` for PCD export (a hand-written binary-PCD writer is used as fallback). Supported input: Livox `CustomMsg` bags (fast raw-bytes path) and `PointCloud2` bags (rospy fallback).
+**Aggregate & visualize** the dense map on demand — this reconstructs the world-frame map by applying `point_body_to_world` per frame, then opens an open3d viewer:
+
+```bash
+python3 fastlio_utils.py --output_dir ./out [--voxel 0.1] [--no_show]
+```
+
+Options: `--voxel L` voxel-downsamples the map; `--pcd PATH` sets the output PCD path (default `out/PCD/map_aggregated.pcd`); `--no_show` writes the PCD without opening the viewer; `--no_save` visualizes without writing. Visualization needs `open3d` (`pip install open3d`); without it the PCD is still written.
+
+**Dependencies**: `numpy`, `scipy`, `pyyaml`, and ROS1 `rosbag` (file I/O only; e.g. ROS Noetic, Python ≥ 3.7). Optional: `open3d` for map **visualization** via `aggregate_map` (a hand-written binary-PCD writer is the fallback for saving the aggregated PCD). Supported input: Livox `CustomMsg` bags (fast raw-bytes path) and `PointCloud2` bags (rospy fallback).
 
 ## 中文简介
 
-本仓库将 FAST-LIO2 的完整 SLAM 管线以纯 Python (NumPy) 重写，面向代码审读与教学，拆为两个自顶向下可读的文件：`fastlio_numpy.py`（SLAM 算法本体：IESKF、IMU 处理、点面观测、主循环）与 `fastlio_utils.py`（其操作的数据结构与基础设施：SO(3)/S(2) 数学、流形状态、增量地图 KD-Tree、rosbag 解析、计时、配置、IO）。章节组织与 C++ 版模块边界对应，节头附学术中文讲解。实现与多模块开发版在 6 个数据包上输出轨迹逐字节一致；纯 NumPy 在 10 Hz 下有 3–5× 实时余量。精度与耗时见上表。
+本仓库将 FAST-LIO2 的完整 SLAM 管线以纯 Python (NumPy) 重写，面向代码审读与教学，拆为两个自顶向下可读的文件：`fastlio_numpy.py`（SLAM 算法本体：IESKF、IMU 处理、点面观测、主循环）与 `fastlio_utils.py`（其操作的数据结构与基础设施：SO(3)/S(2) 数学、流形状态、增量地图 KD-Tree、rosbag 解析、计时、配置、IO）。章节组织与 C++ 版模块边界对应，节头附学术中文讲解。地图采用**按帧流式输出**（每帧去畸变点云 + 位姿写入 `out/frames/`，运行内存轻量）；跑完用 `python3 fastlio_utils.py --output_dir <dir>` 聚合重建稠密地图并经 open3d 可视化。实现与多模块开发版在 6 个数据包上输出轨迹逐字节一致；纯 NumPy 在 10 Hz 下有 3–5× 实时余量。精度与耗时见上表。
 
 ## Acknowledgements & License
 

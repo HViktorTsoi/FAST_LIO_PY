@@ -1102,3 +1102,78 @@ def lasermap_fov_segment(
     else:
         ikdtree._tree = None
     ikdtree._dirty = False
+
+
+# =============================================================================
+# §H  地图聚合与可视化（跑完后可单独调用）
+# -----------------------------------------------------------------------------
+# fastlio_numpy.py 的 run() 已改为「按帧流式输出」：每帧去畸变点云（LiDAR 体系）
+# 追加写入 <output_dir>/frames/clouds.bin，其估计位姿与在线标定外参记入
+# frames/index.npz。aggregate_map() 据此重建稠密世界系地图——对每帧施加与
+# point_body_to_world 完全一致的变换 world = rot @ (offset_R @ p + offset_T) + pos，
+# 拼接为一个点云，可选体素降采样，写出 PCD 并（如装了 open3d）可视化。
+# 命令行：  python3 fastlio_utils.py --output_dir <dir> [--voxel L] [--no_show]
+# =============================================================================
+
+
+def aggregate_map(output_dir, voxel=None, save_pcd=True, visualize=True, pcd_path=None):
+    """Reconstruct the dense world-frame map from a run's per-frame output.
+
+    Reads <output_dir>/frames/{clouds.bin, index.npz} — each frame's undistorted
+    LiDAR-body cloud plus its estimated pose and (online-estimated) extrinsics —
+    transforms every frame to world (== point_body_to_world), concatenates, and
+    optionally voxel-downsamples. Writes a PCD and/or opens an open3d viewer.
+    Returns the (N, 3) aggregated cloud.
+    """
+    import os
+    frames = os.path.join(output_dir, "frames")
+    idx = np.load(os.path.join(frames, "index.npz"))
+    count = idx["count"]; pos = idx["pos"]; rot = idx["rot"]
+    offR = idx["offset_R"]; offT = idx["offset_T"]
+    raw = np.fromfile(os.path.join(frames, "clouds.bin"),
+                      dtype=np.float32).reshape(-1, 3)
+    bounds = np.concatenate([[0], np.cumsum(count)])
+    parts = []
+    for i in range(len(count)):
+        p = raw[bounds[i]:bounds[i + 1]]                       # (Ni, 3) body frame
+        # world = rot @ (offset_R @ p + offset_T) + pos  (matches point_body_to_world)
+        w = (rot[i] @ (offR[i] @ p.T + offT[i][:, None]) + pos[i][:, None]).T
+        parts.append(w)
+    cloud = np.vstack(parts) if parts else np.zeros((0, 3))
+    if voxel:
+        cloud = voxel_downsample(cloud, voxel)[:, :3]
+    print("Aggregated %d points from %d frames" % (len(cloud), len(count)))
+    if save_pcd:
+        out = pcd_path or os.path.join(output_dir, "PCD", "map_aggregated.pcd")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        _save_pcd([cloud], out)
+    if visualize:
+        try:
+            import open3d as o3d
+        except ImportError:
+            print("open3d not installed — skipped visualization (PCD written above; "
+                  "`pip install open3d` to view).")
+            return cloud
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(cloud[:, :3].astype(np.float64))
+        o3d.visualization.draw_geometries([pc])
+    return cloud
+
+
+if __name__ == "__main__":
+    _ap = argparse.ArgumentParser(
+        description="Aggregate a FAST-LIO_PY run's per-frame clouds into one "
+                    "world-frame map and visualize it with open3d.")
+    _ap.add_argument("--output_dir", required=True,
+                     help="run output directory (must contain frames/)")
+    _ap.add_argument("--voxel", type=float, default=None,
+                     help="optional voxel leaf size [m] to downsample the map")
+    _ap.add_argument("--pcd", default=None,
+                     help="output PCD path (default: <output_dir>/PCD/map_aggregated.pcd)")
+    _ap.add_argument("--no_show", action="store_true",
+                     help="write the PCD only; do not open the open3d viewer")
+    _ap.add_argument("--no_save", action="store_true",
+                     help="visualize only; do not write a PCD")
+    _a = _ap.parse_args()
+    aggregate_map(_a.output_dir, voxel=_a.voxel, save_pcd=not _a.no_save,
+                  visualize=not _a.no_show, pcd_path=_a.pcd)

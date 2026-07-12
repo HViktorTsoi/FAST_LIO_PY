@@ -1318,6 +1318,7 @@ def run(
 
     os.makedirs(os.path.join(output_dir, "PCD"), exist_ok=True)
     os.makedirs(os.path.join(output_dir, "Log"), exist_ok=True)
+    os.makedirs(os.path.join(output_dir, "frames"), exist_ok=True)
 
     # ------------------------------------------------------------------ init
     state = StateIkfom()
@@ -1350,7 +1351,19 @@ def run(
     imu_buffer:   deque = deque()
 
     trajectory: List[dict] = []
-    pcl_map_pts: List[np.ndarray] = []
+    # Per-frame map output: each scan's undistorted (LiDAR-body) cloud is
+    # streamed to one binary file (frames/clouds.bin) and its estimated pose +
+    # online-estimated extrinsics recorded (frames/index.npz). The dense world
+    # map is reconstructed on demand by fastlio_utils.aggregate_map() — i.e.
+    # `python3 fastlio_utils.py --output_dir <dir>`. Keeps the run memory-light:
+    # no whole-map accumulation in RAM, each write is just the current frame.
+    _clouds_f = open(os.path.join(output_dir, "frames", "clouds.bin"), "wb")
+    fr_count: List[int]        = []   # points per frame
+    fr_pos:   List[np.ndarray] = []   # (3,)   state.pos      per frame
+    fr_rot:   List[np.ndarray] = []   # (3,3)  state.rot      per frame
+    fr_offR:  List[np.ndarray] = []   # (3,3)  state.offset_R per frame (EKF-estimated)
+    fr_offT:  List[np.ndarray] = []   # (3,)   state.offset_T per frame
+    fr_stamp: List[float]      = []   # scan-end timestamp per frame
 
     flg_first_scan   = True
     flg_EKF_inited   = False
@@ -1594,11 +1607,19 @@ def run(
                 map_incremental(ikdtree, feats_down_world, nn_pts_final,
                                 nn_valid_final, filter_size_map, flg_EKF_inited)
 
-            # Accumulate full-resolution undistorted scan in world frame
-            # (matches C++ pcl_map_accum which uses feats_undistort, not the downsampled cloud)
+            # Per-frame map output: stream this scan's undistorted body-frame
+            # cloud + record its pose & extrinsics (see setup above). The dense
+            # world map is reconstructed later by aggregate_map() applying
+            # exactly point_body_to_world per frame.
             with _timer.region("map_accum_full"):
-                pts_world_full = point_body_to_world(state, pts_undistort)[:, :3]
-                pcl_map_pts.append(pts_world_full)
+                xyz = np.ascontiguousarray(pts_undistort[:, :3], dtype=np.float32)
+                _clouds_f.write(xyz.tobytes())
+                fr_count.append(len(xyz))
+                fr_pos.append(state.pos.copy())
+                fr_rot.append(state.rot.copy())
+                fr_offR.append(state.offset_R.copy())
+                fr_offT.append(state.offset_T.copy())
+                fr_stamp.append(lidar_end_time)
 
             # Record trajectory (TUM: t tx ty tz qx qy qz qw)
             with _timer.region("traj_record"):
@@ -1620,8 +1641,21 @@ def run(
     # ------------------------------------------------------------------ save
     save_t0 = time.perf_counter()
     _save_trajectory(trajectory, os.path.join(output_dir, "Log", "trajectory_py_tum.txt"))
-    _save_pcd(pcl_map_pts, os.path.join(output_dir, "PCD", "map_offline_py.pcd"))
+    _clouds_f.close()
+    # Per-frame index: pose + online-estimated extrinsics + point count per
+    # frame, consumed by fastlio_utils.aggregate_map() to rebuild the world map.
+    np.savez(os.path.join(output_dir, "frames", "index.npz"),
+             count=np.asarray(fr_count, dtype=np.int64),
+             pos=np.asarray(fr_pos, dtype=np.float64),
+             rot=np.asarray(fr_rot, dtype=np.float64),
+             offset_R=np.asarray(fr_offR, dtype=np.float64),
+             offset_T=np.asarray(fr_offT, dtype=np.float64),
+             stamp=np.asarray(fr_stamp, dtype=np.float64))
     save_time = time.perf_counter() - save_t0
+    print(f"Per-frame map -> {os.path.join(output_dir, 'frames')} "
+          f"({len(fr_count)} frames). Aggregate + visualize:\n"
+          f"  python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fastlio_utils.py')} "
+          f"--output_dir {output_dir}")
     if profile:
         _timer.record("output_save", save_time)
 
