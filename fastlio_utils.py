@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """FAST-LIO2 纯 Python 实现的工具函数下沉模块 —— fastlio_numpy.py 的配套文件.
 
-本文件收纳 scripts/fastlio_numpy.py（2708 行单文件纯 numpy FAST-LIO2 参考实现）
+本文件收纳 scripts/fastlio_numpy.py（单文件纯 numpy FAST-LIO2 参考实现）
 中与主算法流程正交的“工具性”符号：SO(3)/S(2) 流形数学原语、rosbag 裸字节
 消息解析、剖析计时器、配置与命令行解析、以及轨迹/点云文件输出与体素降采样。
 将这些工具从主文件下沉至此，使主文件专注于状态估计核心（StateIkfom、
@@ -807,7 +807,7 @@ def voxel_downsample(pts: np.ndarray, leaf: float) -> np.ndarray:
 # Base interface (documentation only, not enforced via ABC)
 # ======================================================================
 class IkdTreeBase:
-    """Common interface for ikd-Tree backends."""
+    """Documentation-only interface for the ikd-Tree map backend."""
     def set_downsample_param(self, leaf_size: float): ...
     def Build(self, pts: np.ndarray): ...
     def Add_Points(self, new_pts: np.ndarray, downsample: bool = True) -> int: ...
@@ -825,10 +825,10 @@ class IkdTreeBase:
 # 批量取 5-NN。validnum/size/Root_Node 与 C++ 端同名接口一一对应。
 
 # ======================================================================
-# scipy backend (original pure-Python implementation)
+# scipy implementation (the sole pure-Python map backend)
 # ======================================================================
 class IkdTreeScipy(IkdTreeBase):
-    """Incremental KD-Tree backed by scipy.cKDTree (pure Python fallback).
+    """Incremental KD-Tree backed by scipy.cKDTree (the sole map backend).
 
     Interface matches the C++ KD_TREE<PointType> used in FAST-LIO.
     Note: tie-breaking differs from C++ ikd-Tree due to different tree
@@ -1073,7 +1073,7 @@ def lasermap_fov_segment(
     """Remove map voxels too far from current LiDAR position.
 
     Uses Delete_Point_Boxes with a bounding box covering the far region.
-    Works with both C++ and scipy backends.
+    Operates on the scipy-backed IkdTreeScipy (the sole map-tree backend).
 
     Note: this function is the unconditional variant. The run() loop uses
     a movement-gated wrapper to skip the expensive flatten+rebuild on
