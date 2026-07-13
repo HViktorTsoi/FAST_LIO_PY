@@ -9,7 +9,11 @@ The complete LiDAR-inertial odometry pipeline in readable NumPy, split into two 
 
 ## Usage
 
-**Dependencies**: `numpy`, `scipy`, `pyyaml`, and ROS1 `rosbag` (file I/O only; e.g. ROS Noetic, Python ≥ 3.7). Optional: `open3d` for map **visualization** via `aggregate_map` (a hand-written binary-PCD writer is the fallback for saving the aggregated PCD). Supported input: Livox `CustomMsg` bags (fast raw-bytes path) and `PointCloud2` bags (rospy fallback).
+**Dependencies**: `numpy`, `scipy`, `pyyaml`, and ROS1 `rosbag` (file I/O only; e.g. ROS Noetic, Python ≥ 3.7). Optional: `open3d` for map **visualization** via `aggregate_map` (a hand-written binary-PCD writer is the fallback for saving the aggregated PCD).
+
+**Test data**: example Livox AVIA rosbags are available from the original FAST-LIO repository — [Google Drive](https://drive.google.com/drive/folders/1CGYEJ9-wWjr8INyan6q1BZz_5VtGB-fP?usp=sharing).
+
+> **LiDAR support**: at present only **Livox (AVIA-class) `CustomMsg`** bags are supported (fast raw-bytes parsing path). Support for other LiDAR types — Velodyne / Ouster `PointCloud2` — is under active development.
 
 ### 1. Run
 
