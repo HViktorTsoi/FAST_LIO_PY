@@ -9,7 +9,13 @@ The complete LiDAR-inertial odometry pipeline in readable NumPy, split into two 
 
 ## Usage
 
-**Dependencies**: `numpy`, `scipy`, `pyyaml`, and ROS1 `rosbag` (file I/O only; e.g. ROS Noetic, Python ≥ 3.7). Optional: `open3d` for map **visualization** via `aggregate_map` (a hand-written binary-PCD writer is the fallback for saving the aggregated PCD).
+**Dependencies**: `numpy`, `scipy`, `pyyaml`, and `rosbag` (Python ≥ 3.7). **No ROS installation is required** — the project only *reads* bag files (no `roscore`, no ROS runtime), so `rosbag` can be pip-installed on its own from the [rospypi](https://github.com/rospypi/simple) index:
+
+```bash
+pip install --extra-index-url https://rospypi.github.io/simple/ rosbag
+```
+
+(Add `roslz4` from the same index if you need to read LZ4-compressed bags.) Optional: `open3d` for map **visualization** via `aggregate_map` (a hand-written binary-PCD writer is the fallback for saving the aggregated PCD).
 
 **Test data**: example Livox AVIA rosbags are available from the original FAST-LIO repository — [Google Drive](https://drive.google.com/drive/folders/1CGYEJ9-wWjr8INyan6q1BZz_5VtGB-fP?usp=sharing).
 
