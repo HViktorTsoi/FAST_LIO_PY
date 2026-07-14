@@ -1,8 +1,8 @@
 # FAST_LIO_PY
 
-**A pure-Python (NumPy) reimplementation of [FAST-LIO2](https://github.com/hku-mars/FAST_LIO), written for code review and teaching.**
+**A pure-Python (NumPy) reimplementation of [FAST-LIO2](https://github.com/hku-mars/FAST_LIO).**
 
-The complete LiDAR-inertial odometry pipeline in readable NumPy, split into two top-to-bottom-readable files:
+The complete LiDAR-inertial odometry pipeline in NumPy, split into two files:
 
 - **[`fastlio_numpy.py`](fastlio_numpy.py)** (~1 700 lines) — the **SLAM algorithm**: the iterated error-state Kalman filter (predict / update), IMU initialization + forward propagation + motion undistortion, the point-to-plane observation model, incremental-map update, and the offline main loop.
 - **[`fastlio_utils.py`](fastlio_utils.py)** (~1 200 lines) — the **data structures and infrastructure** the algorithm operates on: SO(3)/S(2) manifold math, the 23-DOF manifold state (`StateIkfom`), the scipy incremental-map KD-tree, raw-bytes rosbag parsing, the profiling timer, config/CLI, geometry helpers, file output, and the per-frame-map aggregation + open3d visualization (`aggregate_map`, also a standalone CLI).
