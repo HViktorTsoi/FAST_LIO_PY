@@ -46,20 +46,32 @@ Options: `--voxel L` voxel-downsamples the map; `--pcd PATH` sets the output PCD
 
 ## Accuracy & timing vs the original C++ FAST-LIO2
 
-Test platform: **Intel Core i5-9300H** — 4 cores / 8 threads, 2.4 GHz base / 4.1 GHz turbo — with single-threaded BLAS (`OMP_NUM_THREADS=1`). Same-machine comparison on 6 Livox AVIA bags (ATE = translational RMSE, SE(3)-aligned; wall = internal SLAM loop):
+Test platform: **Intel Core i5-9300H** — 4 cores / 8 threads, 2.4 GHz base / 4.1 GHz turbo — with single-threaded BLAS (`OMP_NUM_THREADS=1`). Same-machine comparison on 6 Livox AVIA bags (wall = internal SLAM loop):
 
-| Bag (duration) | rate | ATE vs C++ | C++ | NumPy | **real-time** |
-|---|---|---|---|---|---|
-| quick-shack (49 s) | 10 Hz | 5.87 cm | 1.6 s | 9.7 s | **5.0×** |
-| outdoor_MB_10hz (141 s) | 10 Hz | 3.87 cm | 12.3 s | 43.5 s | **3.2×** |
-| HKU_MB (260 s) | 10 Hz | 5.17 cm | 23.9 s | 88.7 s | **2.9×** |
-| outdoor_run_100Hz (64 s) | 100 Hz | 4.30 cm | 7.2 s | 47.2 s | 1.4× |
-| outdoor_MB_100Hz (117 s) | 100 Hz | 9.41 cm | 11.6 s | 81.0 s | 1.4× |
-| 100hz_2021 (351 s) | 100 Hz | 26.82 cm | 42.1 s | 285.3 s | 1.2× |
+| Bag (duration) | rate | C++ | NumPy | **real-time** |
+|---|---|---|---|---|
+| quick-shack (49 s) | 10 Hz | 1.6 s | 9.7 s | **5.0×** |
+| outdoor_MB_10hz (141 s) | 10 Hz | 12.3 s | 43.5 s | **3.2×** |
+| HKU_MB (260 s) | 10 Hz | 23.9 s | 88.7 s | **2.9×** |
+| outdoor_run_100Hz (64 s) | 100 Hz | 7.2 s | 47.2 s | 1.4× |
+| outdoor_MB_100Hz (117 s) | 100 Hz | 11.6 s | 81.0 s | 1.4× |
+| 100hz_2021 (351 s) | 100 Hz | 42.1 s | 285.3 s | 1.2× |
 
 **Real-time:** even in this most-conservative configuration (single-threaded BLAS, no JIT), the pure-NumPy pipeline runs **faster than real time on every bag**. At 10 Hz it has 3–5× headroom (~20–34 ms/scan vs the 100 ms budget); at 100 Hz it is still real-time but tight (~7–8 ms/scan vs 10 ms). (These are offline timings; a live ROS node adds per-message deserialization overhead, small relative to the SLAM compute.)
 
 **Timing:** aggregate ≈ 5–6× the C++ wall. Single-threaded BLAS is forced on purpose — thread-pool spin-up dominates compute on this filter's small 23×23 / 12×12 / 3×3 matrices; serial BLAS measured **−60 % wall** vs default threading. The remaining gap is the per-scan Python-dispatch floor over the sequential, small-matrix filter, not algorithmic overhead.
+
+### Reconstructed maps
+
+Top-down (bird's-eye) view of the world-frame map — points colored by height, with the estimated trajectory overlaid (green ● = start, white ● = end). Each view is cropped to the main body of the reconstruction:
+
+<p align="center">
+  <img src="assets/quick-shack.png" height="210" alt="quick-shack"/>
+  <img src="assets/outdoor_run_100Hz.png" height="210" alt="outdoor_run_100Hz"/>
+  <img src="assets/HKU_MB.png" height="210" alt="HKU_MB"/>
+  <br/>
+  <img src="assets/100hz_2021.png" width="92%" alt="100hz_2021"/>
+</p>
 
 **Accuracy:** four of six bags are within a few cm of C++. The two outliers sit in numerically chaotic regimes — `outdoor_MB_100Hz` is a global gravity-init tilt (trajectory *shape* is fine), `100hz_2021` is long-run drift — where any floating-point implementation change moves the trajectory; the C++/Python gap there is FP-accumulation noise, not an algorithmic difference.
 
