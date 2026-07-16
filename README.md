@@ -9,17 +9,17 @@ The complete LiDAR-inertial odometry pipeline in NumPy, split into two files:
 
 ## Usage
 
-**Dependencies**: `numpy`, `scipy`, `pyyaml`, and `rosbag` (Python ≥ 3.7). **No ROS installation is required** — the project only *reads* bag files (no `roscore`, no ROS runtime), so `rosbag` can be pip-installed on its own from the [rospypi](https://github.com/rospypi/simple) index:
+**Dependencies**: `numpy`, `scipy`, `pyyaml`, and `rosbag` (Python ≥ 3.7). **No ROS installation is required** — the project only *reads* bag files, so `rosbag` can be pip-installed on its own from the [rospypi](https://github.com/rospypi/simple) index:
 
 ```bash
 pip install --extra-index-url https://rospypi.github.io/simple/ rosbag
 ```
 
-(Add `roslz4` from the same index if you need to read LZ4-compressed bags.) Optional: `open3d` for map **visualization** via `aggregate_map` (a hand-written binary-PCD writer is the fallback for saving the aggregated PCD).
+(Add `roslz4` from the same index if you need to read LZ4-compressed bags.) Optional: `open3d` for map **visualization** via `aggregate_map`.
 
 **Test data**: example Livox AVIA rosbags are available from the original FAST-LIO repository — [Google Drive](https://drive.google.com/drive/folders/1CGYEJ9-wWjr8INyan6q1BZz_5VtGB-fP?usp=sharing).
 
-> **LiDAR support**: at present only **Livox (AVIA-class) `CustomMsg`** bags are supported (fast raw-bytes parsing path). Support for other LiDAR types — Velodyne / Ouster `PointCloud2` — is under active development.
+> **LiDAR support**: at present only **Livox (AVIA-class) `CustomMsg`** bags are supported. Support for other LiDAR types — Velodyne / Ouster `PointCloud2` — is under active development.
 
 ### 1. Run
 
@@ -32,11 +32,11 @@ python3 fastlio.py \
     --output_dir ./out [--profile]
 ```
 
-This writes `out/Log/trajectory_py_tum.txt` (TUM trajectory) and streams the map as **per-frame output** under `out/frames/` — each scan's undistorted (LiDAR-body) cloud is appended to `clouds.bin` and its estimated pose + online-estimated extrinsics recorded in `index.npz`. The run stays memory-light (no whole-map accumulation in RAM) and never writes a giant PCD.
+This writes `out/Log/trajectory_py_tum.txt` (TUM trajectory) and streams the map to `out/frames/` one scan at a time, so the whole map is never held in RAM.
 
 ### 2. Aggregate result & visualize
 
-Reconstruct the dense map on demand — this applies `point_body_to_world` per frame, then opens an open3d viewer:
+Reconstruct the dense map on demand and open an open3d viewer:
 
 ```bash
 python3 utils.py --output_dir ./out [--voxel 0.1] [--no_show]
@@ -57,13 +57,13 @@ Test platform: **Intel Core i5-9300H** — 4 cores / 8 threads, 2.4 GHz base / 4
 | outdoor_MB_100Hz (117 s) | 100 Hz | 11.6 s | 81.0 s | 1.4× |
 | 100hz_2021 (351 s) | 100 Hz | 42.1 s | 285.3 s | 1.2× |
 
-**Real-time:** even in this most-conservative configuration (single-threaded BLAS, no JIT), the pure-NumPy pipeline runs **faster than real time on every bag**. At 10 Hz it has 3–5× headroom (~20–34 ms/scan vs the 100 ms budget); at 100 Hz it is still real-time but tight (~7–8 ms/scan vs 10 ms). (These are offline timings; a live ROS node adds per-message deserialization overhead, small relative to the SLAM compute.)
+**Real-time:** even with single-threaded BLAS, the pure-NumPy pipeline runs **faster than real time on every bag** — 3–5× headroom at 10 Hz (~20–34 ms/scan vs the 100 ms budget), and still real-time but tight at 100 Hz (~7–8 ms vs 10 ms).
 
-**Timing:** aggregate ≈ 5–6× the C++ wall. Single-threaded BLAS is forced on purpose — thread-pool spin-up dominates compute on this filter's small 23×23 / 12×12 / 3×3 matrices; serial BLAS measured **−60 % wall** vs default threading. The remaining gap is the per-scan Python-dispatch floor over the sequential, small-matrix filter, not algorithmic overhead.
+**Timing:** ≈ 5–6× the C++ wall. Single-threaded BLAS is forced on purpose — the filter's matrices are tiny, so BLAS threading only adds overhead (serial measured **−60 % wall**). The remaining gap is per-scan Python dispatch, not algorithmic overhead.
 
 ### Reconstructed maps
 
-Top-down (bird's-eye) view of the world-frame map — points colored by height, with the estimated trajectory overlaid (green ● = start, white ● = end). Each view is cropped to the main body of the reconstruction:
+Top-down view of the world-frame map, colored by height, with the estimated trajectory overlaid (green ● = start, white ● = end):
 
 <table align="center">
   <tr>
@@ -80,7 +80,7 @@ Top-down (bird's-eye) view of the world-frame map — points colored by height, 
   </tr>
 </table>
 
-**Accuracy:** four of six bags are within a few cm of C++. The two outliers sit in numerically chaotic regimes — `outdoor_MB_100Hz` is a global gravity-init tilt (trajectory *shape* is fine), `100hz_2021` is long-run drift — where any floating-point implementation change moves the trajectory; the C++/Python gap there is FP-accumulation noise, not an algorithmic difference.
+**Accuracy:** four of six bags are within a few cm of C++. The two outliers — `outdoor_MB_100Hz` (a global gravity-init tilt; trajectory *shape* is fine) and `100hz_2021` (long-run drift) — differ only by floating-point accumulation, not an algorithmic difference.
 
 ## Acknowledgements & License
 
