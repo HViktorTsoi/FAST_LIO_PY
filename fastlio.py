@@ -70,6 +70,29 @@ from utils import (hat, exp, log, A_matrix, quat_to_rot, rot_to_quat, _inv3,
     _NullTimer, _NullCtx, _NULL_CTX, _NULL_TIMER, load_config, get_param,
     _build_arg_parser, _save_trajectory, _save_pcd, voxel_downsample,
     StateIkfom, IkdTreeBase, IkdTreeScipy, point_body_to_world, lasermap_fov_segment)
+import utils as _utils   # to update the shared _S2_TYP chart selector at runtime
+
+
+def _choose_s2_typ(grav):
+    """Pick the S2 gravity-chart base axis (1=x, 2=y, 3=z) so gravity sits far
+    from the chart's antipole (−base), where the chart derivatives blow up P.
+    Default is the x-axis (typ 1, matching C++ MTK::S2<...,1>), which handles
+    every orientation except gravity pointing near −x — e.g. a Livox Mid360
+    mounted x-up. Only then do we switch to the axis most perpendicular to
+    gravity. Gravity ≈ −z (AVIA) always stays on typ 1, so those runs are
+    bit-identical."""
+    g = grav / (np.linalg.norm(grav) + 1e-12)
+    if g[0] < -0.8:                       # within ~37° of −x → typ-1 chart singular
+        return 2 if abs(g[1]) <= abs(g[2]) else 3
+    return 1
+
+
+def _set_s2_typ(typ):
+    """Set the S2 chart selector everywhere it is read: this module's copy (from
+    `from utils import _S2_TYP`) and utils' own global (used by boxplus/boxminus)."""
+    global _S2_TYP
+    _S2_TYP = typ
+    _utils._S2_TYP = typ
 
 # =============================================================================
 # §1  SO(3) / S(2) 流形数学基础  →  见 utils.py §A
@@ -616,6 +639,10 @@ class ImuProcess:
             # Scale to actual gravity
             cov_acc_scale = (G_m_s2 / np.linalg.norm(self.mean_acc)) ** 2
             state.grav = -self.mean_acc / np.linalg.norm(self.mean_acc) * G_m_s2
+            # Pick the S2 gravity chart to avoid its antipole singularity for
+            # this sensor's mounting (see _choose_s2_typ). No-op (typ 1) for
+            # AVIA-style −z gravity; rescues x-up mounts like Mid360.
+            _set_s2_typ(_choose_s2_typ(state.grav))
             state.bg   = self.mean_gyr.copy()
             state.offset_T = self.Lidar_T_wrt_IMU.copy()
             state.offset_R = self.Lidar_R_wrt_IMU.copy()
