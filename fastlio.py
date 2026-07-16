@@ -27,13 +27,13 @@
 scripts/fastlio/requirements.txt)。不依赖 numba、pybind11 或任何自研编译组件。
 
 用法:
-    python3 scripts/fastlio_numpy.py \
+    python3 scripts/fastlio.py \
         --bag /mnt/ipc/bags/2020-09-16-quick-shack.bag \
         --config config/avia.yaml \
         --output_dir /tmp/out [--profile]
 
 输出: {output_dir}/Log/trajectory_py_tum.txt (TUM 格式轨迹),
-      {output_dir}/frames/ (逐帧去畸变点云 + 位姿, 由 fastlio_utils.aggregate_map()
+      {output_dir}/frames/ (逐帧去畸变点云 + 位姿, 由 utils.aggregate_map()
       按需重建稠密世界地图, 需 open3d)。
 """
 from __future__ import annotations
@@ -59,11 +59,11 @@ from collections import deque
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # 工具函数下沉：SO(3)/S(2) 流形数学、rosbag 解析、计时、配置/CLI、文件输出、
-# 体素降采样等与主算法正交的符号已移入同目录 fastlio_utils.py（逐字节不变的
+# 体素降采样等与主算法正交的符号已移入同目录 utils.py（逐字节不变的
 # 重构，无循环依赖）。此处以健壮方式（脚本自身目录入 sys.path）反向导入。
 import os as _os
 sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from fastlio_utils import (hat, exp, log, A_matrix, quat_to_rot, rot_to_quat, _inv3,
+from utils import (hat, exp, log, A_matrix, quat_to_rot, rot_to_quat, _inv3,
     s2_Bx, s2_Nx_yy, s2_Mx, G_m_s2, _S2_LENGTH, _S2_TYP, _LIVOX_POINT_DTYPE,
     _parse_header, parse_imu_bytes, parse_livox_bytes, imu_msg_to_dict, _LIVOX_GETTER,
     livox_msg_to_array, pcl2_to_array, _try_import_rosbag, PhaseTimer, _TimerCtx,
@@ -72,7 +72,7 @@ from fastlio_utils import (hat, exp, log, A_matrix, quat_to_rot, rot_to_quat, _i
     StateIkfom, IkdTreeBase, IkdTreeScipy, point_body_to_world, lasermap_fov_segment)
 
 # =============================================================================
-# §1  SO(3) / S(2) 流形数学基础  →  见 fastlio_utils.py §A
+# §1  SO(3) / S(2) 流形数学基础  →  见 utils.py §A
 # -----------------------------------------------------------------------------
 # （原模块 docstring：SO(3) math utilities mirroring so3_math.h from FAST-LIO.）
 #
@@ -105,7 +105,7 @@ from fastlio_utils import (hat, exp, log, A_matrix, quat_to_rot, rot_to_quat, _i
 #
 # 本节符号（hat / exp / log / A_matrix / quat_to_rot / rot_to_quat /
 # s2_Bx / s2_Nx_yy / s2_Mx 及常量 G_m_s2 / _S2_LENGTH / _S2_TYP）已下沉至
-# fastlio_utils.py §A，并在文件头 import 区反向导入。
+# utils.py §A，并在文件头 import 区反向导入。
 # =============================================================================
 # =============================================================================
 # §2  23 维流形状态定义与 ⊞/⊟（boxplus / boxminus）运算
@@ -143,7 +143,7 @@ from fastlio_utils import (hat, exp, log, A_matrix, quat_to_rot, rot_to_quat, _i
 # =============================================================================
 
 # 常量 G_m_s2 / _S2_LENGTH / _S2_TYP 及 StateIkfom（23 维流形状态与 ⊞/⊟ 运算）
-# 已下沉至 fastlio_utils.py §B，见文件头 import。
+# 已下沉至 utils.py §B，见文件头 import。
 # =============================================================================
 # §3  迭代误差状态卡尔曼滤波 IESKF（Iterated Error-State Kalman Filter）
 # =============================================================================
@@ -194,7 +194,7 @@ _EYE_12 = np.eye(12)
 # ---------------------------------------------------------------------------
 # Small-matrix helpers (avoid numpy per-call overhead for 3×3 / 2×2 inverses)
 # ---------------------------------------------------------------------------
-# _inv3（3×3 余子式显式求逆）已下沉至 fastlio_utils.py §A，见文件头 import。
+# _inv3（3×3 余子式显式求逆）已下沉至 utils.py §A，见文件头 import。
 
 
 # ---------------------------------------------------------------------------
@@ -908,10 +908,10 @@ class ImuProcess:
         pts_out, state = self.undistort_pcl(meas, state)
         return pts_out, state
 # =============================================================================
-# §5  增量式地图 KD-Tree（scipy 实现）  →  见 fastlio_utils.py 末节
+# §5  增量式地图 KD-Tree（scipy 实现）  →  见 utils.py 末节
 #     「增量地图 KD-Tree · FOV 裁剪 · 体↔世界变换」
 # -----------------------------------------------------------------------------
-# IkdTreeBase / IkdTreeScipy 已下沉至 fastlio_utils.py，见文件头 import。
+# IkdTreeBase / IkdTreeScipy 已下沉至 utils.py，见文件头 import。
 # =============================================================================
 # =============================================================================
 # §6  点到平面观测模型 —— 批量平面拟合与 12 维观测雅可比
@@ -1155,7 +1155,7 @@ def h_share_model(
 # 本节符号（_LIVOX_POINT_DTYPE / _parse_header / parse_imu_bytes /
 # parse_livox_bytes，以及 §8 中的 _try_import_rosbag / imu_msg_to_dict /
 # _LIVOX_GETTER / livox_msg_to_array / pcl2_to_array）已下沉至
-# fastlio_utils.py §C，见文件头 import。
+# utils.py §C，见文件头 import。
 # ============================================================================
 # =============================================================================
 # §8  离线主流程（对应 C++ 版 src/laserMappingOffline.cpp）
@@ -1165,7 +1165,7 @@ def h_share_model(
 #   即 C++ 离线节点中 "for (const rosbag::MessageInstance &m : view)" 主循环的
 #   逐语句对应实现，并输出：
 #     - 逐帧点云 + 位姿：<output_dir>/frames/（clouds.bin + index.npz，
-#       由 fastlio_utils.aggregate_map() 按需重建稠密世界地图）
+#       由 utils.aggregate_map() 按需重建稠密世界地图）
 #     - TUM 轨迹：   <output_dir>/Log/trajectory_py_tum.txt
 #       （每行格式：timestamp tx ty tz qx qy qz qw）
 #
@@ -1201,7 +1201,7 @@ def h_share_model(
 
 
 # PhaseTimer / _TimerCtx / _NullTimer / _NullCtx / _NULL_CTX / _NULL_TIMER
-# 已下沉至 fastlio_utils.py §D，见文件头 import。
+# 已下沉至 utils.py §D，见文件头 import。
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1217,12 +1217,12 @@ LIDAR_MARSIM   = 4
 
 # load_config / get_param（配置加载，§E）与 ROS 消息 helpers
 # （_try_import_rosbag / imu_msg_to_dict / _LIVOX_GETTER / livox_msg_to_array /
-# pcl2_to_array，§C）已下沉至 fastlio_utils.py，见文件头 import。
-# voxel_downsample（体素栅格降采样）已下沉至 fastlio_utils.py §G。
+# pcl2_to_array，§C）已下沉至 utils.py，见文件头 import。
+# voxel_downsample（体素栅格降采样）已下沉至 utils.py §G。
 
 
 # point_body_to_world（体→世界变换）与 lasermap_fov_segment（FOV 球外裁剪）
-# 已下沉至 fastlio_utils.py 末节「增量地图 KD-Tree · FOV 裁剪 · 体↔世界变换」，
+# 已下沉至 utils.py 末节「增量地图 KD-Tree · FOV 裁剪 · 体↔世界变换」，
 # 见文件头 import。
 
 
@@ -1356,8 +1356,8 @@ def run(
     # Per-frame map output: each scan's undistorted (LiDAR-body) cloud is
     # streamed to one binary file (frames/clouds.bin) and its estimated pose +
     # online-estimated extrinsics recorded (frames/index.npz). The dense world
-    # map is reconstructed on demand by fastlio_utils.aggregate_map() — i.e.
-    # `python3 fastlio_utils.py --output_dir <dir>`. Keeps the run memory-light:
+    # map is reconstructed on demand by utils.aggregate_map() — i.e.
+    # `python3 utils.py --output_dir <dir>`. Keeps the run memory-light:
     # no whole-map accumulation in RAM, each write is just the current frame.
     _clouds_f = open(os.path.join(output_dir, "frames", "clouds.bin"), "wb")
     fr_count: List[int]        = []   # points per frame
@@ -1645,7 +1645,7 @@ def run(
     _save_trajectory(trajectory, os.path.join(output_dir, "Log", "trajectory_py_tum.txt"))
     _clouds_f.close()
     # Per-frame index: pose + online-estimated extrinsics + point count per
-    # frame, consumed by fastlio_utils.aggregate_map() to rebuild the world map.
+    # frame, consumed by utils.aggregate_map() to rebuild the world map.
     np.savez(os.path.join(output_dir, "frames", "index.npz"),
              count=np.asarray(fr_count, dtype=np.int64),
              pos=np.asarray(fr_pos, dtype=np.float64),
@@ -1656,7 +1656,7 @@ def run(
     save_time = time.perf_counter() - save_t0
     print(f"Per-frame map -> {os.path.join(output_dir, 'frames')} "
           f"({len(fr_count)} frames). Aggregate + visualize:\n"
-          f"  python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fastlio_utils.py')} "
+          f"  python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utils.py')} "
           f"--output_dir {output_dir}")
     if profile:
         _timer.record("output_save", save_time)
@@ -1681,8 +1681,8 @@ def run(
               f"({other/(elapsed+save_time)*100:5.1f}%)")
 
 
-# _save_trajectory / _save_pcd（文件输出）已下沉至 fastlio_utils.py §F，
-# _build_arg_parser（命令行解析）已下沉至 fastlio_utils.py §E，见文件头 import。
+# _save_trajectory / _save_pcd（文件输出）已下沉至 utils.py §F，
+# _build_arg_parser（命令行解析）已下沉至 utils.py §E，见文件头 import。
 
 
 def main():

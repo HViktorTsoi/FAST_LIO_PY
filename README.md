@@ -4,8 +4,8 @@
 
 The complete LiDAR-inertial odometry pipeline in NumPy, split into two files:
 
-- **[`fastlio_numpy.py`](fastlio_numpy.py)** (~1 700 lines) — the **SLAM algorithm**: the iterated error-state Kalman filter (predict / update), IMU initialization + forward propagation + motion undistortion, the point-to-plane observation model, incremental-map update, and the offline main loop.
-- **[`fastlio_utils.py`](fastlio_utils.py)** (~1 200 lines) — the **data structures and infrastructure** the algorithm operates on: SO(3)/S(2) manifold math, the 23-DOF manifold state (`StateIkfom`), the scipy incremental-map KD-tree, raw-bytes rosbag parsing, the profiling timer, config/CLI, geometry helpers, file output, and the per-frame-map aggregation + open3d visualization (`aggregate_map`, also a standalone CLI).
+- **[`fastlio.py`](fastlio.py)** (~1 700 lines) — the **SLAM algorithm**: the iterated error-state Kalman filter (predict / update), IMU initialization + forward propagation + motion undistortion, the point-to-plane observation model, incremental-map update, and the offline main loop.
+- **[`utils.py`](utils.py)** (~1 200 lines) — the **data structures and infrastructure** the algorithm operates on: SO(3)/S(2) manifold math, the 23-DOF manifold state (`StateIkfom`), the scipy incremental-map KD-tree, raw-bytes rosbag parsing, the profiling timer, config/CLI, geometry helpers, file output, and the per-frame-map aggregation + open3d visualization (`aggregate_map`, also a standalone CLI).
 
 ## Usage
 
@@ -23,10 +23,10 @@ pip install --extra-index-url https://rospypi.github.io/simple/ rosbag
 
 ### 1. Run
 
-Run the odometry on a bag (keep `fastlio_utils.py` next to `fastlio_numpy.py` — the algorithm file imports it):
+Run the odometry on a bag (keep `utils.py` next to `fastlio.py` — the algorithm file imports it):
 
 ```bash
-python3 fastlio_numpy.py \
+python3 fastlio.py \
     --bag your_livox_avia.bag \
     --config config/avia.yaml \
     --output_dir ./out [--profile]
@@ -39,14 +39,14 @@ This writes `out/Log/trajectory_py_tum.txt` (TUM trajectory) and streams the map
 Reconstruct the dense map on demand — this applies `point_body_to_world` per frame, then opens an open3d viewer:
 
 ```bash
-python3 fastlio_utils.py --output_dir ./out [--voxel 0.1] [--no_show]
+python3 utils.py --output_dir ./out [--voxel 0.1] [--no_show]
 ```
 
 Options: `--voxel L` voxel-downsamples the map; `--pcd PATH` sets the output PCD path (default `out/PCD/map_aggregated.pcd`); `--no_show` writes the PCD without opening the viewer; `--no_save` visualizes without writing. Visualization needs `open3d` (`pip install open3d`); without it the PCD is still written.
 
 ## Accuracy & timing vs the original C++ FAST-LIO2
 
-Same-machine comparison on 6 Livox AVIA bags (ATE = translational RMSE, SE(3)-aligned; wall = internal SLAM loop):
+Test platform: **Intel Core i5-9300H** — 4 cores / 8 threads, 2.4 GHz base / 4.1 GHz turbo — with single-threaded BLAS (`OMP_NUM_THREADS=1`). Same-machine comparison on 6 Livox AVIA bags (ATE = translational RMSE, SE(3)-aligned; wall = internal SLAM loop):
 
 | Bag (duration) | rate | ATE vs C++ | C++ | NumPy | **real-time** |
 |---|---|---|---|---|---|

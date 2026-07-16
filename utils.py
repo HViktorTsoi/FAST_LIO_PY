@@ -1,34 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FAST-LIO2 纯 Python 实现的工具函数下沉模块 —— fastlio_numpy.py 的配套文件.
+"""FAST-LIO2 纯 Python 实现的工具函数下沉模块 —— fastlio.py 的配套文件.
 
-本文件收纳 scripts/fastlio_numpy.py（单文件纯 numpy FAST-LIO2 参考实现）
+本文件收纳 scripts/fastlio.py（单文件纯 numpy FAST-LIO2 参考实现）
 中与主算法流程正交的“工具性”符号：SO(3)/S(2) 流形数学原语、rosbag 裸字节
 消息解析、剖析计时器、配置与命令行解析、以及轨迹/点云文件输出与体素降采样。
 将这些工具从主文件下沉至此，使主文件专注于状态估计核心（StateIkfom、
 IESEKF predict/update、ImuProcess、ikd-Tree、h_share_model、离线主流程 run），
 提升可读性与可维护性。
 
-本模块**完全自包含**，不依赖 fastlio_numpy.py（无循环导入）：每个被下沉的
+本模块**完全自包含**，不依赖 fastlio.py（无循环导入）：每个被下沉的
 函数/类所依赖的符号，或在本文件内可解析，或来自标准库 / numpy / scipy /
 pyyaml。rosbag、open3d、scipy 等重依赖沿用原实现的“函数体内惰性导入”策略，
 以保持在无 ROS / 无可视化环境下的可导入性。
 
 本次下沉为**逐字节不变（bit-identical）**的纯重构：所有函数体、类体、行内
-注释、浮点写法与运算顺序均与原 fastlio_numpy.py 逐字节一致，仅做“移动 +
+注释、浮点写法与运算顺序均与原 fastlio.py 逐字节一致，仅做“移动 +
 补充自包含 import + 添加节头横幅”。因此主文件在 6 个 rosbag 上的输出轨迹与
 重构前逐字节相同。
 
 章节组织：
-    §A  SO(3)/S(2) 流形数学          （原 fastlio_numpy.py §1）
-    §B  23 维流形状态 StateIkfom      （原 fastlio_numpy.py §2）
-    §C  rosbag/消息解析              （原 fastlio_numpy.py §7 + §8 ROS helpers）
-    §D  剖析计时                      （原 fastlio_numpy.py §8 PhaseTimer）
-    §E  配置 / 命令行解析            （原 fastlio_numpy.py §8 config/CLI）
-    §F  文件输出                      （原 fastlio_numpy.py §8 save helpers）
-    §G  几何：体素降采样              （原 fastlio_numpy.py §8 voxel_downsample）
+    §A  SO(3)/S(2) 流形数学          （原 fastlio.py §1）
+    §B  23 维流形状态 StateIkfom      （原 fastlio.py §2）
+    §C  rosbag/消息解析              （原 fastlio.py §7 + §8 ROS helpers）
+    §D  剖析计时                      （原 fastlio.py §8 PhaseTimer）
+    §E  配置 / 命令行解析            （原 fastlio.py §8 config/CLI）
+    §F  文件输出                      （原 fastlio.py §8 save helpers）
+    §G  几何：体素降采样              （原 fastlio.py §8 voxel_downsample）
     增量地图 KD-Tree · FOV 裁剪 · 体↔世界变换
-                                      （原 fastlio_numpy.py §5 + §8）
+                                      （原 fastlio.py §5 + §8）
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 # =============================================================================
 # §A  SO(3) / S(2) 流形数学基础
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §1。提供 FAST-LIO2 状态估计所依赖的两类流形运算
+# 下沉自 fastlio.py §1。提供 FAST-LIO2 状态估计所依赖的两类流形运算
 # 原语：SO(3) 群上的 hat/exp/log/A_matrix 与四元数↔旋转矩阵互转，及单位球面
 # S(2)（重力约束）切空间工具 s2_Bx / s2_Nx_yy / s2_Mx。常量 G_m_s2 /
 # _S2_LENGTH / _S2_TYP 一并下沉（主文件反向 import）。
@@ -252,7 +252,7 @@ def _inv3(M: np.ndarray) -> np.ndarray:
 # =============================================================================
 # §B  23 维流形状态定义与 ⊞/⊟（boxplus / boxminus）运算
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §2。对应 C++ include/use-ikfom.hpp（MTK_BUILD_MANIFOLD
+# 下沉自 fastlio.py §2。对应 C++ include/use-ikfom.hpp（MTK_BUILD_MANIFOLD
 # 宏定义的 state_ikfom），其中 S2 流形部分对应 include/IKFoM_toolkit/mtk/types/
 # S2.hpp。因其 boxplus/boxminus 直接引用 §A 的 exp/log/hat/s2_Bx 与常量
 # G_m_s2/_S2_LENGTH/_S2_TYP，故置于 §A 数学之后。
@@ -371,7 +371,7 @@ class StateIkfom:
 # =============================================================================
 # §C  rosbag 裸字节解析（raw-bytes message parsers）
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §7（裸字节解析）与 §8 的 ROS 消息 helpers。绕过 rospy
+# 下沉自 fastlio.py §7（裸字节解析）与 §8 的 ROS 消息 helpers。绕过 rospy
 # 的反序列化层，直接把 rosbag 的裸字节 payload 解析为流水线所需 numpy 数组；
 # 另含经 rospy 反序列化后处理 Livox/PointCloud2 的兼容路径。
 #
@@ -559,7 +559,7 @@ def pcl2_to_array(msg, point_filter_num: int = 1, lidar_type: int = 2) -> Option
 # =============================================================================
 # §D  剖析计时（per-region timing）
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §8 的 PhaseTimer 及其配套。--profile 时按命名区域累计
+# 下沉自 fastlio.py §8 的 PhaseTimer 及其配套。--profile 时按命名区域累计
 # 墙钟时间与调用次数；未开启时以 _NullTimer / _NullCtx 作零开销替身。
 # =============================================================================
 
@@ -646,7 +646,7 @@ _NULL_TIMER = _NullTimer()
 # =============================================================================
 # §E  配置加载与命令行解析
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §8 的 config/CLI 部分。load_config 读取 YAML；
+# 下沉自 fastlio.py §8 的 config/CLI 部分。load_config 读取 YAML；
 # get_param 带回退地遍历嵌套字典；_build_arg_parser 构造命令行解析器。三者
 # 均不引用主文件的 LIDAR_* / FILTER_SIZE_MAP 等常量（其默认值在解析器内硬编码），
 # 故这些常量仍留在主文件，本节自包含于 yaml / argparse。
@@ -700,7 +700,7 @@ def _build_arg_parser():
 # =============================================================================
 # §F  文件输出（轨迹 / 点云）
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §8 的 save helpers。_save_trajectory 按 TUM 格式（9 位
+# 下沉自 fastlio.py §8 的 save helpers。_save_trajectory 按 TUM 格式（9 位
 # 小数）逐行写出；_save_pcd 优先经 open3d（惰性导入）写二进制，无 open3d 时
 # 回退到手写 PCD v0.7 二进制格式。
 # =============================================================================
@@ -748,7 +748,7 @@ def _save_pcd(pts_list: list, path: str) -> None:
 # =============================================================================
 # §G  几何：体素栅格降采样
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §8 的 voxel_downsample。与 pcl::VoxelGrid 等价的质心
+# 下沉自 fastlio.py §8 的 voxel_downsample。与 pcl::VoxelGrid 等价的质心
 # 降采样。
 # =============================================================================
 
@@ -780,7 +780,7 @@ def voxel_downsample(pts: np.ndarray, leaf: float) -> np.ndarray:
 # =============================================================================
 # 增量地图 KD-Tree · FOV 裁剪 · 体↔世界变换
 # -----------------------------------------------------------------------------
-# 下沉自 fastlio_numpy.py §5（增量式地图 KD-Tree 的 scipy 实现）及 §8 的两个
+# 下沉自 fastlio.py §5（增量式地图 KD-Tree 的 scipy 实现）及 §8 的两个
 # 几何 helper（point_body_to_world / lasermap_fov_segment）。IkdTreeScipy 为
 # 地图树的唯一实现，继承文档性接口基类 IkdTreeBase（须置于其后）；
 # point_body_to_world 引用 §B 的 StateIkfom；lasermap_fov_segment 以鸭子类型
@@ -1107,12 +1107,12 @@ def lasermap_fov_segment(
 # =============================================================================
 # §H  地图聚合与可视化（跑完后可单独调用）
 # -----------------------------------------------------------------------------
-# fastlio_numpy.py 的 run() 已改为「按帧流式输出」：每帧去畸变点云（LiDAR 体系）
+# fastlio.py 的 run() 已改为「按帧流式输出」：每帧去畸变点云（LiDAR 体系）
 # 追加写入 <output_dir>/frames/clouds.bin，其估计位姿与在线标定外参记入
 # frames/index.npz。aggregate_map() 据此重建稠密世界系地图——对每帧施加与
 # point_body_to_world 完全一致的变换 world = rot @ (offset_R @ p + offset_T) + pos，
 # 拼接为一个点云，可选体素降采样，写出 PCD 并（如装了 open3d）可视化。
-# 命令行：  python3 fastlio_utils.py --output_dir <dir> [--voxel L] [--no_show]
+# 命令行：  python3 utils.py --output_dir <dir> [--voxel L] [--no_show]
 # =============================================================================
 
 
