@@ -1,6 +1,6 @@
 # FAST_LIO_PY
 
-**A pure-Python (NumPy) reimplementation of [FAST-LIO2](https://github.com/hku-mars/FAST_LIO).**
+**A pure-Python reimplementation of [FAST-LIO2](https://github.com/hku-mars/FAST_LIO).**
 
 The complete LiDAR-inertial odometry pipeline in NumPy, split into two files:
 
