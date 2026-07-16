@@ -30,7 +30,7 @@ python3 fastlio.py \
     --bag your_livox_avia.bag \
     --config config/avia.yaml \
     --output_dir ./out \
-    --filter_surf 0.5 --filter_map 0.5 --point_filter_num 2 [--profile]
+    --filter_surf 0.5 --filter_map 0.5 --point_filter_num 2
 ```
 
 `--filter_surf` and `--filter_map` are the scan and map voxel-downsample sizes (m); `--point_filter_num` keeps every Nth input point. **If the result looks off — drift, jitter, or poor alignment — try lowering all three**: smaller values keep more points, which is more accurate at the cost of speed.
