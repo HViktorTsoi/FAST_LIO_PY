@@ -74,6 +74,10 @@ Top-down (bird's-eye) view of the world-frame map — points colored by height, 
     <td><img src="assets/HKU_MB.png" width="400" alt="HKU_MB"/></td>
     <td><img src="assets/100hz_2021.png" width="400" alt="100hz_2021"/></td>
   </tr>
+  <tr>
+    <td><img src="assets/outdoor_MB_10hz.png" width="400" alt="outdoor_MB_10hz"/></td>
+    <td><img src="assets/outdoor_MB_100Hz.png" width="400" alt="outdoor_MB_100Hz"/></td>
+  </tr>
 </table>
 
 **Accuracy:** four of six bags are within a few cm of C++. The two outliers sit in numerically chaotic regimes — `outdoor_MB_100Hz` is a global gravity-init tilt (trajectory *shape* is fine), `100hz_2021` is long-run drift — where any floating-point implementation change moves the trajectory; the C++/Python gap there is FP-accumulation noise, not an algorithmic difference.
